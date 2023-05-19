@@ -1,10 +1,12 @@
 from decouple import config
-from PIL import Image
 from gtts import gTTS
 from datetime import datetime
+from moviepy.editor import *
 import openai
 import requests
 import os
+# from playsound import playsound
+# from PIL import Image
 
 openai.api_key = config('GPT_KEY')
 openai.organization = config("ORG")
@@ -12,51 +14,94 @@ openai.organization = config("ORG")
 
 
 def main():
-    # generate_audio_visuals("Generate a story about four brothers fighting Spongebob Squarepant. Set up a exposition, conflict, and resolution. Separate the story into atleast 5 paragraphs. Output the story as 2 separate lists. One list, named \"TEXT\", contains each paragraph of the story in order. The second list, named \"IMAGES\", contains a generated image description based off each element in \"TEXT\". Do not number the elements of the list.")
-    tts = gTTS("hello world")
-    tts.save("hello.mp3")
-    os.system("mpg321 hello.mp3")
+    cur_dir = "story_assets/" + datetime.now().strftime("%y-%m-%d_%H-%M-%S")
+    story = "Generate a story about a mysterious island that appears and disappears at random, harboring secrets and treasure."
+    prompt = generate_prompt(story)
+    generate_audio_visual_assets(cur_dir, prompt)
+    create_movie(cur_dir)    
+    
+def create_movie(directory):
+    image_files = [file for file in os.listdir(directory) if file.find('image-') > -1]
+    clips = []
+    audio = AudioFileClip(f"{directory}/script.mp3")
+    for image_file in image_files:
+        clips.append(ImageClip(f"{directory}/{image_file}").set_duration(audio.duration / len(image_files)).crossfadein(1.5).crossfadeout(1.5))
+    
+    final_video = concatenate_videoclips(clips, method='compose')
+    final_video.audio = audio
+    
+    final_video.write_videofile(f"{directory}/final_video.mp4", fps=30)
+    
+    
+def generate_prompt(first_sentence):
+    '''first_sentence should be a complete sentences of set of sentences ended with a period. ie \"Generate a story about a pickle going through a divorce.\"'''
+    
+    format_specifier = "The output should be formatted as a title to the story, signified with the name \"TITLE\",  followed by two separate lists named \"STORY\" and \"IMAGES\" . \"STORY\" contains the generated story. \"IMAGES\" is list of image descriptions of what is happening in the story. The image descriptions must be in chronological order of the generated story, and each description must have as much detail as possible and inlcude physical characteristics about each character. Also, each image description should have the same context provided in the description itself. The output should be \"TITLE\" followed by all of \"STORY\" followed by all of \"IMAGES\". The lists must not be numbered."
+        
+    return first_sentence + " " + format_specifier
 
-def generate_audio_visuals(prompt):
-    # set up folder
-    cur_dir = str(datetime.now())
-    os.mkdir(cur_dir)
-    with open(cur_dir + "/prompt.txt", "w+") as file:
+def generate_audio_visual_assets(directory, prompt):
+    
+    if not os.path.exists(directory):
+        os.mkdir(directory)
+        
+    with open(directory + "/prompt.txt", "w+") as file:
         file.write(prompt)
 
-    # get response and format it correctly
+    # get response
     response_text = get_prompt_response(prompt)
-    with open(cur_dir + "/full_response.txt", "w+") as file:
+    with open(directory + "/full_response.txt", "w+") as file:
         file.write(response_text)
 
-    text_start = response_text.find("TEXT:")
-    images_start = response_text.find("IMAGES:")
+    text_start = response_text.find("STORY")
+    images_start = response_text.find("IMAGES")
 
-    text_list = response_text[text_start:images_start]
+    # format title
+    title = response_text[:text_start].strip()
+    if title.find("TITLE:") != -1:
+        title = title[6:]
+    
+    # format script and image list
+    script = response_text[text_start+6:images_start]
+    script = f"This story is called {title}.\n{script}"
+    
     images_list = response_text[images_start:].split('\n')
+    images_list = [item for item in images_list if len(item) > 12]
+    
+    # save title
+    with open(directory + "/title.txt", "w+") as file:
+        file.write(str(title))
 
-    images_list = [item for item in images_list if len(item) > 0 and item != "IMAGES:"]
+    # save full prompt response
+    with open(directory + "/script.txt", "w+") as file:
+        file.write(script)
 
-    with open(cur_dir + "/response_text.txt", "w+") as file:
-        file.write(text_list)
-    with open(cur_dir + "/response_image_prompts.txt", "w+") as file:
-        file.write(str(images_list))
+    # save image descriptions
+    with open(directory + "/response_image_prompts.txt", "w+") as file:
+        for image_desc in images_list:
+            file.write(str(image_desc + '\n'))
 
     # generate and download images
     for count, image_prompt in enumerate(images_list):
         img_url = get_image_response(image_prompt + ", digital art")
-        download_image_from_url(img_url, cur_dir, f'image-{count}')
+        download_image_from_url(img_url, directory, f'image-{count}')
+    
+    # generate and download tts files
+    tts = gTTS(script)
+    tts.save(directory + '/script.mp3')
 
 def get_prompt_response(prompt):
-    """Generates a ChatGPT Response"""
-    completion = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo-0301",
-        messages=[
-            {"role":"system", "content":"You are a thoughful storyteller with an admiration for adventure."},
-            {"role":"user", "content": prompt}
-        ]
+    """Generates a GPT Response"""
+    completion = openai.Completion.create(
+        model="text-davinci-003",
+        prompt=prompt,
+        temperature=0.8,
+        max_tokens=1000,
+        top_p=1,
+        frequency_penalty=0,
+        presence_penalty=0
     )
-    response = completion.choices[0].message.content
+    response = completion.choices[0].text.strip()
 
     return response
 
