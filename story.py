@@ -4,6 +4,7 @@ from datetime import datetime
 from moviepy.editor import *
 import openai
 import requests
+import random
 import os
 # from playsound import playsound
 # from PIL import Image
@@ -14,23 +15,29 @@ openai.organization = config("ORG")
 
 
 def main():
-    cur_dir = "story_assets/" + datetime.now().strftime("%y-%m-%d_%H-%M-%S")
-    story = "Generate a story about a mysterious island that appears and disappears at random, harboring secrets and treasure."
-    prompt = generate_prompt(story)
-    generate_audio_visual_assets(cur_dir, prompt)
-    create_movie(cur_dir)    
+    # cur_dir = "story_assets/" + datetime.now().strftime("%y-%m-%d_%H-%M-%S")
+    # story = "Generate a story about a goldendoodle dog who goes to the moon to try and find treats and comes across a moon monster that likes to trick dogs into becoming servants."
+    # prompt = generate_prompt(story)
+    # generate_audio_visual_assets(cur_dir, prompt)
+    # create_movie(cur_dir)    
+    
+    create_movie("story_assets/23-05-19_18-07-42")
+    
     
 def create_movie(directory):
     image_files = [file for file in os.listdir(directory) if file.find('image-') > -1]
     clips = []
-    audio = AudioFileClip(f"{directory}/script.mp3")
+    script = AudioFileClip(f"{directory}/script.mp3").fx(afx.audio_fadeout, 1)
+    offset = random.randint(15,75)
+    bg_music_file = f"background_music/music{random.randint(1,11)}.mp3"
+    bg_music = AudioFileClip(bg_music_file).subclip(offset, offset + script.duration).fx(afx.volumex, 0.1).fx(afx.audio_fadeout, 1).fx(afx.audio_fadein, 1)
+    
     for image_file in image_files:
-        clips.append(ImageClip(f"{directory}/{image_file}").set_duration(audio.duration / len(image_files)).crossfadein(1.5).crossfadeout(1.5))
+        clips.append(ImageClip(f"{directory}/{image_file}").set_duration(script.duration / len(image_files)).crossfadein(1.5).crossfadeout(1.5))
     
     final_video = concatenate_videoclips(clips, method='compose')
-    final_video.audio = audio
-    
-    final_video.write_videofile(f"{directory}/final_video.mp4", fps=30)
+    final_video.audio = CompositeAudioClip([script, bg_music])
+    final_video.write_videofile(f"{directory}/final_video.mp4", fps=24, audio_codec='aac')
     
     
 def generate_prompt(first_sentence):
