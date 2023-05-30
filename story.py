@@ -6,38 +6,47 @@ import openai
 import requests
 import random
 import os
-# from playsound import playsound
-# from PIL import Image
-
-openai.api_key = config('GPT_KEY')
-openai.organization = config("ORG")
-
 
 
 def main():
-    # cur_dir = "story_assets/" + datetime.now().strftime("%y-%m-%d_%H-%M-%S")
-    # story = "Generate a story about a goldendoodle dog who goes to the moon to try and find treats and comes across a moon monster that likes to trick dogs into becoming servants."
+    # setup
+    openai.api_key = config('GPT_KEY')
+    cur_dir = "story_assets/" + datetime.now().strftime("%y-%m-%d_%H-%M-%S")
+
+
+    story = "Generate a story about a mysterious carnival that appears in town overnight, granting the deepest desires of its visitors."
+
+
     # prompt = generate_prompt(story)
     # generate_audio_visual_assets(cur_dir, prompt)
     # create_movie(cur_dir)    
+
+    create_movie("story_assets/23-05-30_01-54-53")
     
-    create_movie("story_assets/23-05-19_18-07-42")
     
     
 def create_movie(directory):
-    image_files = [file for file in os.listdir(directory) if file.find('image-') > -1]
+    image_files = [file for file in os.listdir(directory) if file.find('image-') >= 0]
     clips = []
     script = AudioFileClip(f"{directory}/script.mp3").fx(afx.audio_fadeout, 1)
     offset = random.randint(15,75)
     bg_music_file = f"background_music/music{random.randint(1,11)}.mp3"
-    bg_music = AudioFileClip(bg_music_file).subclip(offset, offset + script.duration).fx(afx.volumex, 0.1).fx(afx.audio_fadeout, 1).fx(afx.audio_fadein, 1)
+    bg_music = AudioFileClip(bg_music_file).subclip(offset, offset + script.duration).fx(afx.volumex, 0.25).fx(afx.audio_fadeout, 1).fx(afx.audio_fadein, 1)
     
-    for image_file in image_files:
-        clips.append(ImageClip(f"{directory}/{image_file}").set_duration(script.duration / len(image_files)).crossfadein(1.5).crossfadeout(1.5))
+    for count, image_file in enumerate(image_files):
+        image_clip = ImageClip(f"{directory}/{image_file}")
+        image_clip = image_clip.set_duration(script.duration / len(image_files))
+        if count > 0:
+            image_clip = image_clip.crossfadein(1.0)
+        image_clip = image_clip.crossfadeout(1.0)
+        # image_clip = image_clip.resize(1.25)
+        # image_clip = image_clip.set_position(lambda t: ('center' + t*0.2, 'center' + t*0.5))
+        clips.append(image_clip)
     
     final_video = concatenate_videoclips(clips, method='compose')
     final_video.audio = CompositeAudioClip([script, bg_music])
-    final_video.write_videofile(f"{directory}/final_video.mp4", fps=24, audio_codec='aac')
+
+    final_video.write_videofile(f"{directory}/final_video_aac.mp4", fps=24, audio_codec='aac')
     
     
 def generate_prompt(first_sentence):
@@ -67,6 +76,8 @@ def generate_audio_visual_assets(directory, prompt):
     title = response_text[:text_start].strip()
     if title.find("TITLE:") != -1:
         title = title[6:]
+    elif title.find("TITLE") != -1:
+        title = title[5:]
     
     # format script and image list
     script = response_text[text_start+6:images_start]
@@ -125,8 +136,6 @@ def download_image_from_url(url, folder, name):
     img_data = requests.get(url).content
     with open(f'{folder}/{name}.png', 'wb') as handler:
         handler.write(img_data)
-
-
 
 
 
